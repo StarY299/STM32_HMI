@@ -1,5 +1,4 @@
 #include "dds.h"
-#include "uart.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>

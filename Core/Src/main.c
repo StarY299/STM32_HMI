@@ -4,16 +4,6 @@
   * @file           : main.c
   * @brief          : Main program body
   ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
@@ -23,10 +13,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "uart.h"
+#include "tjc_screen.h"
 #include "dds.h"
 #include <stdio.h>
-#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,22 +41,11 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-void HMI_send_string(char *name, char *showdata);
-void HMI_send_number(char *name, int num);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-void HMI_send_string(char *name, char *showdata)
-{
-    printf("%s=\"%s\"\xff\xff\xff", name, showdata);
-}
-
-void HMI_send_number(char *name, int num)
-{
-    printf("%s=%d\xff\xff\xff", name, num);
-}
 
 /* USER CODE END 0 */
 
@@ -83,32 +61,25 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
-
-  /* Configure the system clock */
   SystemClock_Config();
-
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
 
-  /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  Uart_StartReceive();
-  DDS_Init(2, 200);               /* 2Hz, 200Hz */
+  TJC_Init();
+  DDS_Init(2, 200);
 
   HAL_Delay(800);
-  printf("page wave\xff\xff\xff");
+  TJC_SetPage("wave");
   HAL_Delay(300);
 
   /* USER CODE END 2 */
@@ -122,17 +93,17 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
     /* ── 按键 ── */
-    uint8_t k = Uart_GetKey();
-    if (k == 0x01) { DDS_SetWaveform(DDS_SINE);     HMI_send_string("t_wave.txt", "Sine"); }
-    if (k == 0x02) { DDS_SetWaveform(DDS_SQUARE);   HMI_send_string("t_wave.txt", "Square"); }
-    if (k == 0x03) { DDS_SetWaveform(DDS_TRIANGLE); HMI_send_string("t_wave.txt", "Triangle"); }
-    if (k == 0x04) { DDS_SetWaveform(DDS_SAWTOOTH); HMI_send_string("t_wave.txt", "Sawtooth"); }
+    uint8_t k = TJC_GetKey();
+    if (k == 0x01) { DDS_SetWaveform(DDS_SINE);     TJC_SetText("t_wave.txt", "Sine"); }
+    if (k == 0x02) { DDS_SetWaveform(DDS_SQUARE);   TJC_SetText("t_wave.txt", "Square"); }
+    if (k == 0x03) { DDS_SetWaveform(DDS_TRIANGLE); TJC_SetText("t_wave.txt", "Triangle"); }
+    if (k == 0x04) { DDS_SetWaveform(DDS_SAWTOOTH); TJC_SetText("t_wave.txt", "Sawtooth"); }
 
-    /* ── 波形: add 滚动, 200Hz ── */
+    /* ── 波形: 200Hz ── */
     static uint32_t wav_tick = 0;
     if (HAL_GetTick() - wav_tick >= 5) {
         wav_tick = HAL_GetTick();
-        printf("add 1,0,%d\xff\xff\xff", DDS_GetNextSample());
+        TJC_WaveAdd(1, 0, DDS_GetNextSample());
     }
 
     /* ── 信息: 1Hz ── */
@@ -141,8 +112,9 @@ int main(void)
         info_tick = HAL_GetTick();
         HAL_GPIO_TogglePin(GPIOF, GPIO_PIN_9);
         static int sec = 0; sec++;
-        HMI_send_number("n0.val", sec);
-        HMI_send_string("t_info.txt", (char *)DDS_GetWaveformName());
+        char buf[32];
+        sprintf(buf, "%s  %ds", DDS_GetWaveformName(), sec);
+        TJC_SetText("t_info.txt", buf);
     }
   }
   /* USER CODE END 3 */
@@ -157,14 +129,9 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Configure the main internal regulator output voltage
-  */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -174,13 +141,10 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLN = 168;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
     Error_Handler();
   }
 
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
@@ -188,8 +152,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
-  {
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK) {
     Error_Handler();
   }
 }
@@ -198,33 +161,11 @@ void SystemClock_Config(void)
 
 /* USER CODE END 4 */
 
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
+  while (1) { }
 }
 #ifdef USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
-}
+void assert_failed(uint8_t *file, uint32_t line) { }
 #endif /* USE_FULL_ASSERT */
